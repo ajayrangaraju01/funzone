@@ -823,108 +823,161 @@ function TruthOrDareGame({ onBack }) {
 }
 
 // --- NHIE & WYR (Simplified for localhost demo) ---
-function NhieGame({ onBack, userId }) {
-  const [mode, setMode] = useState(null);
-  const [gameId, setGameId] = useState('');
-  const [gameState, setGameState] = useState(null);
-  const [isHost, setIsHost] = useState(false);
+function NhieGame({ onBack }) {
+  const [step, setStep] = useState('setup'); // setup | spinning | playing
+  const [players, setPlayers] = useState([]);
+  const [nameInput, setNameInput] = useState('');
+  const [currentPlayer, setCurrentPlayer] = useState(null);
+  const [playerHistory, setPlayerHistory] = useState([]);
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [answeredPlayers, setAnsweredPlayers] = useState([]);
 
-  useEffect(() => {
-    if (gameId) {
-      const q = doc(db, 'artifacts', appId, 'public', 'data', 'nhie_sessions', gameId);
-      return onSnapshot(q, (snapshot) => {
-        if (snapshot.exists()) setGameState(snapshot.data());
-      }, (err) => console.error(err));
-    }
-  }, [gameId]);
-
-  const createGame = async () => {
-    const id = Math.random().toString(36).substring(2, 7).toUpperCase();
-    const session = {
-      id, hostId: userId, status: 'lobby',
-      currentQuestion: allNhieQuestions[0].text,
-      players: [{ id: userId, name: 'Host', fingers: 5 }],
-      questionIndex: 0
-    };
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'nhie_sessions', id), session);
-    setGameId(id);
-    setIsHost(true);
+  // Add player
+  const addPlayer = () => {
+    if (!nameInput.trim()) return;
+    setPlayers(prev => [
+      ...prev,
+      { id: Date.now(), name: nameInput.trim(), fingers: 5 }
+    ]);
+    setNameInput('');
   };
 
-  const nextQuestion = async () => {
-    if (!isHost) return;
-    const nextIdx = (gameState.questionIndex + 1) % allNhieQuestions.length;
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'nhie_sessions', gameId), {
-      questionIndex: nextIdx, currentQuestion: allNhieQuestions[nextIdx].text
-    });
+  // Pick next player fairly
+  const pickNextPlayer = () => {
+    if (players.length === 0) return;
+
+    const unplayed = players.filter(p => !playerHistory.includes(p.id));
+    const pool = unplayed.length ? unplayed : players;
+    const history = unplayed.length ? playerHistory : [];
+
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    setCurrentPlayer(picked);
+    setPlayerHistory([...history, picked.id]);
+    setAnsweredPlayers([]);
+    setStep('playing');
   };
 
-  const takeFinger = async () => {
-    const updatedPlayers = gameState.players.map(p => p.id === userId ? { ...p, fingers: Math.max(0, p.fingers - 1) } : p);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'nhie_sessions', gameId), { players: updatedPlayers });
+  // Reduce finger when player says "I HAVE"
+  const handleHave = (playerId) => {
+    if (answeredPlayers.includes(playerId)) return;
+
+    setPlayers(prev =>
+      prev.map(p =>
+        p.id === playerId
+          ? { ...p, fingers: Math.max(0, p.fingers - 1) }
+          : p
+      )
+    );
+
+    setAnsweredPlayers(prev => [...prev, playerId]);
   };
 
-  if (!mode) {
+  // Move to next question & turn
+  const nextTurn = () => {
+    setQuestionIndex(q => (q + 1) % allNhieQuestions.length);
+    setStep('spinning');
+  };
+
+  /* ---------------- SETUP SCREEN ---------------- */
+  if (step === 'setup') {
     return (
-      <div className="space-y-4 animate-in fade-in">
+      <div className="space-y-6">
         <BackButton onClick={onBack} />
-        <Button onClick={() => setMode('single')}>Single Player</Button>
-        <Button variant="secondary" onClick={() => setMode('multi')}>Multiplayer</Button>
-        <Button variant="outline" onClick={onBack} className="mt-4"><Home size={18} /> Menu</Button>
-      </div>
-    );
-  }
+        <Card>
+          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+            <Users className="text-indigo-400" /> Players
+          </h2>
 
-  if (mode === 'multi' && !gameId) {
-    return (
-      <div className="space-y-4">
-        <BackButton onClick={() => setMode(null)} />
-        <Button onClick={createGame}>Create Game</Button>
-        <div className="flex gap-2">
-          <input className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded-xl" placeholder="Room Code" onChange={e => setGameId(e.target.value.toUpperCase())} />
-        </div>
-        <Button variant="outline" onClick={onBack}>Quit to Menu</Button>
-      </div>
-    );
-  }
+          <div className="flex gap-2 mb-4">
+            <input
+              className="flex-1 bg-slate-950 border border-slate-700 p-3 rounded-xl outline-none"
+              placeholder="Enter name"
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addPlayer()}
+            />
+            <button
+              onClick={addPlayer}
+              className="bg-indigo-600 p-3 rounded-xl hover:bg-indigo-500"
+            >
+              <Plus />
+            </button>
+          </div>
 
-  return (
-    <div className="space-y-6">
-      <BackButton onClick={() => { setMode(null); setGameId(''); }} />
-      {gameState && (
-        <>
-          <div className="flex justify-between items-center text-xs text-slate-500 font-mono">
-            <span>ROOM: {gameId}</span>
-            <button onClick={onBack} className="flex items-center gap-1 hover:text-white"><LogOut size={12}/> Leave</button>
-          </div>
-          <Card className="text-center py-10 min-h-[200px] flex items-center justify-center">
-            <p className="text-2xl font-bold">{gameState.currentQuestion}</p>
-          </Card>
-          <div className="grid grid-cols-2 gap-4">
-            <Button variant="danger" onClick={takeFinger}>I HAVE 🍷</Button>
-            <Button variant="secondary" onClick={() => {}}>I HAVEN'T</Button>
-          </div>
-          <div className="space-y-2">
-            {gameState.players.map(p => (
-              <div key={p.id} className="bg-slate-900 p-3 rounded-xl flex justify-between items-center border border-slate-800">
-                <span className="font-bold">{p.name}</span>
-                <div className="flex gap-1">
-                  {[...Array(5)].map((_, i) => (
-                    <div key={i} className={`w-3 h-3 rounded-full ${i < p.fingers ? 'bg-rose-500' : 'bg-slate-700'}`} />
-                  ))}
-                </div>
+          <div className="flex flex-wrap gap-2">
+            {players.map(p => (
+              <div
+                key={p.id}
+                className="bg-slate-800 px-3 py-1.5 rounded-full text-sm font-medium"
+              >
+                {p.name}
               </div>
             ))}
+            {players.length === 0 && (
+              <p className="text-slate-500 text-sm italic">
+                Add at least 2 players
+              </p>
+            )}
           </div>
-          <div className="space-y-3">
-            {isHost && <Button onClick={nextQuestion}>Next Question</Button>}
-            <Button variant="outline" onClick={onBack}>Return to Menu</Button>
-          </div>
-        </>
-      )}
+        </Card>
+
+        <Button disabled={players.length < 2} onClick={() => setStep('spinning')}>
+          Start Game
+        </Button>
+
+        <Button variant="outline" onClick={onBack}>
+          Quit to Menu
+        </Button>
+      </div>
+    );
+  }
+
+  /* ---------------- SPINNING (PICK PLAYER) ---------------- */
+  if (step === 'spinning') {
+    setTimeout(pickNextPlayer, 400);
+    return (
+      <div className="text-center space-y-4">
+        <BackButton onClick={onBack} />
+        <p className="text-slate-400 uppercase tracking-widest text-sm">
+          Picking next player...
+        </p>
+      </div>
+    );
+  }
+
+  /* ---------------- PLAYING ---------------- */
+  const question = allNhieQuestions[questionIndex];
+
+  return (
+    <div className="space-y-6 text-center">
+      <BackButton onClick={onBack} />
+
+      <p className="text-indigo-400 text-sm uppercase tracking-widest">
+        {currentPlayer.name} reads
+      </p>
+
+      <Card>
+        <p className="text-2xl font-bold">{question.text}</p>
+      </Card>
+
+      <div className="space-y-2">
+        {players.map(p => (
+          <Button
+            key={p.id}
+            variant="danger"
+            disabled={answeredPlayers.includes(p.id)}
+            onClick={() => handleHave(p.id)}
+          >
+            {p.name} — I HAVE 🍷 ({p.fingers})
+          </Button>
+        ))}
+      </div>
+
+      <Button onClick={nextTurn}>Next Turn</Button>
     </div>
   );
 }
+
 
 function WyrGame({ onBack }) {
   const [index, setIndex] = useState(0);
