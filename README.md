@@ -183,13 +183,5 @@ Built with ❤️ for fun, learning, and real-time multiplayer experiences.
 This project is open-source and available under the **MIT License**.
 
 
----
 
-If you want next, I can:
-- ⭐ Add **GitHub badges** (React, Firebase, Vercel)
-- 📸 Create a **Screenshots section**
-- 🧠 Rewrite this for **resume / LinkedIn / portfolio**
-- 📝 Create a **short repo description + tags**
-
-Just tell me 👍
 
