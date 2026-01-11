@@ -66,7 +66,7 @@ const allWyrQuestions = [
 
 // --- API HELPER FOR AI DARES ---
 const callGemini = async (prompt) => {
-  const apiKey = ""; 
+  const apiKey = "YOUR_GOOGLE_API_KEY"; // Replace with your real API key
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
   
   const payload = { 
